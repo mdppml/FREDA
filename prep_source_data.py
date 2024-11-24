@@ -3,6 +3,7 @@ import numpy as np
 import data as data_mod
 import argparse
 import util
+import pandas as pd
 
 parser = argparse.ArgumentParser()
 
@@ -27,16 +28,26 @@ partition_path = os.path.join(home_path, f'data/{no_clients}_client/dist_{dist}'
 
 
 def main():
-    data = data_mod.DataDNAmethPreprocessed(home_path)
+    # Load source and target data
+    data_dir = os.path.join(args.home_path, "dna_data")
+
+    source_file = os.path.join(data_dir, "source_data.txt")
+    source_table = pd.read_csv(source_file, sep="\t", header=None)
+    source_matrix = np.asfortranarray(source_table.values)
+
+    # Load source data labels
+    y_file = os.path.join(data_dir, "source_y.tsv")
+    y_table = pd.read_csv(y_file, header=None)
+    y_matrix = np.asfortranarray(y_table)
 
     normalizer_x = util.StandardNormalizer
     normalizer_y = util.HorvathNormalizer
 
-    norm_x = normalizer_x(data.training.meth_matrix)
-    norm_y = normalizer_y(data.training.age)
+    norm_x = normalizer_x(source_matrix)
+    norm_y = normalizer_y(y_matrix)
 
-    x_source = norm_x.normalize(data.training.meth_matrix)
-    y_source = norm_y.normalize(data.training.age)
+    x_source = norm_x.normalize(source_matrix)
+    y_source = norm_y.normalize(y_matrix)
 
     # Uniform random partitioning
     total_samples = len(x_source)

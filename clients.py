@@ -167,11 +167,12 @@ class TargetClient:
         self.no_features = self.X.shape[1]
         self.k = self.no_features + 5  # Can be set as high as desired depending on the privacy requirements
 
-        self.data = data_mod.DataDNAmethPreprocessed(self.home_path)
-        # collect and aggregate tissue information
-        self.test_tissues = self.data.test.pheno_table["tissue_complete"]
-
+        # Load phenotype data with actual age and tissue type
+        pheno_data_path = os.path.join(os.path.join(self.home_path, "dna_data"), "target_phenotypes.txt")
+        pheno_data = pd.read_csv(pheno_data_path, delimiter="\t")
+        self.test_tissues = pheno_data['tissue_complete']
         test_tissues_aggregated = self.test_tissues.copy()
+
         test_tissues_aggregated[test_tissues_aggregated == "whole blood"] = "blood"
         test_tissues_aggregated[test_tissues_aggregated == "menstrual blood"] = "blood"
         test_tissues_aggregated[test_tissues_aggregated == "Brain MedialFrontalCortex"] = "Brain Frontal"
@@ -179,8 +180,17 @@ class TargetClient:
         self.grouping = test_tissues_aggregated
         self.groups = np.unique(self.grouping)
 
+        # Load source and target data
+        data_dir = os.path.join(self.home_path, "dna_data")
+
+        # Load source data labels
+        y_file = os.path.join(data_dir, "source_y.tsv")
+        y_table = pd.read_csv(y_file, header=None)
+        y_matrix = np.asfortranarray(y_table)
+
         normalizer_y = util.HorvathNormalizer
-        self.norm_y = normalizer_y(self.data.training.age)
+
+        self.norm_y = normalizer_y(y_matrix)
 
         self.similarity = None
         self.tissue_combinations = None
@@ -300,8 +310,12 @@ class TargetClient:
         test_tissue_frequencies = self.grouping.value_counts()
         test_tissues_unique = test_tissue_frequencies.index.values
         similarity = pd.Series(index=test_tissues_unique, dtype=np.float64)
+
+        pheno_data_path = os.path.join(os.path.join(self.home_path, "dna_data"), "source_phenotypes.txt")
+        pheno_data = pd.read_csv(pheno_data_path, delimiter="\t")
+
         for t in test_tissues_unique:
-            similarity[t] = tissue_similarity.compute_similarity(self.data.training.pheno_table["tissue_detailed"],
+            similarity[t] = tissue_similarity.compute_similarity(pheno_data['tissue_detailed'],
                                                                  self.test_tissues[self.grouping == t])
 
         self.tissue_combinations = list(itertools.combinations(test_tissues_unique[test_tissue_frequencies > 20], 3))
