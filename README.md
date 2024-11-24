@@ -63,7 +63,7 @@ We utilized DNA methylation data and donor age information from two main sources
       repository. *Nucleic Acids Research*, 30(1), 207–210 (2002).  
       DOI: [10.1093/nar/30.1.207](https://doi.org/10.1093/nar/30.1.207)
 
-Tissue data used in the experiments can also be access from the following
+Alternatively, tissue data used in the experiments can be access from the following
 repository (https://github.com/greenelab/wenda_gpu_paper.git) under data/handl. In order to run the experiments,
 users need to download the source and target data and their labels, as well as the phenotypes for both the source and
 target domain and place all the files inside the empty dna_data directory.
