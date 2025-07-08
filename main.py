@@ -1,8 +1,10 @@
 import argparse
-from freda import FREDA
+from aggregator import Aggregator
 import datetime
 import time
 import os
+
+from clients import SourceClient, TargetClient
 
 parser = argparse.ArgumentParser()
 
@@ -12,7 +14,7 @@ parser.add_argument('--setup', type=int, default=2,
 parser.add_argument('--dist', type=int, default=0,
                     help="Which distribution to run.")
 
-parser.add_argument('--use_precomputed_confs', type=bool, default=True,
+parser.add_argument('--use_precomputed_confs', type=bool, default=False,
                     help="Whether to use pre-computed confidences.")
 
 parser.add_argument('--use_precomputed_lambdas', type=bool, default=True,
@@ -87,21 +89,24 @@ def main():
 
     start_time = time.time()
 
-    freda = FREDA(home_path, no_clients, dist, random_seed, k_value)
+    source_clients = [SourceClient(home_path, no_clients, dist, cid, random_seed) for cid in range(no_clients)]
+    target_client = TargetClient(home_path, no_clients, dist, random_seed, k_value)
+
+    server = Aggregator(home_path, no_clients, dist, source_clients, target_client)
 
     if use_precomputed_confs:
         print("Using pre-computed confidences...")
-        freda.use_precomputed_confidences()
+        server.use_precomputed_confidences()
     else:
         print("Performing federated hyper-parameter optimization...")
-        freda.compute_global_hyperparameters()
+        server.compute_global_hyperparameters_secure()
 
         print("Computing confidence scores...")
-        freda.compute_federated_confidence_scores()
+        server.compute_federated_confidence_scores()
 
     if use_precomputed_lambdas:
         print("Using pre-computed lambda values...")
-        freda.use_precomputed_best_lambdas()
+        server.use_precomputed_best_lambdas()
     else:
         if lambda_path_file:
             lambda_path = load_lambda_values(lambda_path_file)
@@ -109,10 +114,10 @@ def main():
             lambda_path = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
 
         print("Computing best lambdas...")
-        freda.compute_best_lambdas(lambda_path, alpha, epochs, global_iterations, lr_init, lr_final)
+        server.compute_best_lambdas(lambda_path, alpha, epochs, global_iterations, lr_init, lr_final)
 
     print("Training adaptive models with optimal lambda prediction...")
-    freda.train_final_adaptive_models(alpha, epochs, global_iterations, lr_init, lr_final)
+    server.train_final_adaptive_models(alpha, epochs, global_iterations, lr_init, lr_final)
 
     end_time = time.time()
     # Calculate and print the elapsed time

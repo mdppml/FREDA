@@ -1,30 +1,24 @@
 import os
-
 import numpy as np
-from clients import SourceClient, TargetClient
 from models import *
 import pandas as pd
 
 
-class FREDA:
+class Aggregator:
 
-    def __init__(self, home_path, setup, dist, seed, k_value):
+    def __init__(self, home_path, no_clients, dist, source_clients, target_client):
         """
-        The main class which implements the FREDA framework.
+        The Aggregator class which orchestrates the simulated federated system.
         :param home_path: Current working directory
-        :param setup: The number of source clients
-        :param dist: Which data distribution to run
-        :param seed: The common random seed for the clients for masking
-        :param k_value: Exponent of the weight function for transforming confidences into weights.
+        :param no_clients: Number of source clients
+        :param dist: The data distribution of the simulation (required for saving computed files)
         """
-        self.no_clients = setup
+        self.no_clients = no_clients
 
-        self.seed = seed
+        self.dist_dir = os.path.join(os.path.join(home_path, f'data/{no_clients}_client/'), f'dist_{dist}/')
 
-        self.dist_dir = os.path.join(os.path.join(home_path, f'data/{setup}_client/'), f'dist_{dist}/')
-
-        self.source_clients = [SourceClient(home_path, setup, dist, cid, self.seed) for cid in range(self.no_clients)]
-        self.target_client = TargetClient(home_path, setup, dist, self.seed, k_value)
+        self.source_clients = source_clients
+        self.target_client = target_client
 
         self.source_client_sample_sizes = [client.get_no_samples() for client in self.source_clients]
 
@@ -38,17 +32,12 @@ class FREDA:
 
         self.best_lambdas = None
 
-    def compute_global_hyperparameters(self):
-        """
-        When called, performs the federated hyperparameter optimization among the source clients for each feature.
-        :return: The global hyperparameter vectors computed.
-        """
-
+    def compute_global_hyperparameters_secure(self):
         if self.kernel_sig and self.noise_sig:
-            print("Hyperparameters are already computed")
+            print("Hyperparameters already computed.")
             return
         elif self.confidences:
-            print("Confidences are already computed, no need to compute hyperparameters")
+            print("Confidences already computed, skipping hyperparameters.")
             return
 
         kernel_sig = []
@@ -57,10 +46,17 @@ class FREDA:
         no_features = self.target_client.get_no_features()
 
         for i in range(no_features):
-            ks, ns = zip(*(client.compute_hyperparameters(i) for client in self.source_clients))
+            for client in self.source_clients:
+                client.compute_masked_hyperparameters(
+                    feature=i,
+                    peer_ids=range(self.no_clients)
+                )
+
+            ks, ns = zip(*(client.get_masked_hyperparameters() for client in self.source_clients))
             kernel_sig.append(sum(ks) / self.no_clients)
             noise_sig.append(sum(ns) / self.no_clients)
-            print("computed hyperparameter for feature ", i)
+
+            print(f"Securely aggregated hyperparameters for feature {i}")
 
         self.kernel_sig = kernel_sig
         self.noise_sig = noise_sig

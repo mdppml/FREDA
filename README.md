@@ -5,6 +5,8 @@ This repository contains the source code of our research article
 **Privacy Preserving Federated Unsupervised Domain Adaptation with Application to Age Prediction from DNA Methylation
 Data**
 
+> Please refer to [**FREDA-CV**](https://github.com/mdppml/FREDA_CV) for a simplified, general-purpose implementation that replaces domain similarity with cross-validation.
+
 ### Software
 
 - Python 3.8.18

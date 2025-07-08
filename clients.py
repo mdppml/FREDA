@@ -14,24 +14,30 @@ import keras.backend as K
 
 class SourceClient:
 
-    def __init__(self, home_path, setup, dist, client_id, seed):
+    def __init__(self, home_path, total_clients, dist, client_id, seed):
         """
         Source client class for FREDA.
         :param home_path: Working directory
-        :param setup: Number of source clients for the current simulation setup
+        :param total_clients: Number of source clients for the current simulation setup
         :param dist: Which data distribution is currently being used
         :param client_id: id of the client
         :param seed: Random seed for common random mask generation
         """
-        setup_dir = os.path.join(home_path, f'data/{setup}_client/')
+        setup_dir = os.path.join(home_path, f'data/{total_clients}_client/')
         dist_dir = os.path.join(setup_dir, f'dist_{dist}/')
         self.data_dir = os.path.join(dist_dir, f'{client_id}/')
+
+        self.total_clients = total_clients
+        self.id = client_id
 
         self.X = np.loadtxt(os.path.join(self.data_dir, "x_train.txt"))
         self.Y = np.loadtxt(os.path.join(self.data_dir, "y_train.txt"))
 
         self.noises = list()
         self.kernel_vars = list()
+
+        self.local_noise = None
+        self.local_kernel = None
 
         self.local_WEN_model = None
 
@@ -43,6 +49,51 @@ class SourceClient:
 
     def get_no_samples(self):
         return self.X.shape[0]
+
+    def compute_masked_hyperparameters(self, feature, peer_ids):
+        """
+        Computes masked kernel and noise sigmas for a given feature using zero-sum masking.
+        :param feature: the index of the feature
+        :param peer_ids: list of peer client IDs to generate masks for
+        :return: masked kernel sigma, masked noise sigma, masks to share (for debugging/logging)
+        """
+        kernel_sig, noise_sig = self.compute_hyperparameters(feature)
+
+        total_mask_kernel = 0.0
+        total_mask_noise = 0.0
+        shared_masks_kernel = {}
+        shared_masks_noise = {}
+
+        for peer_id in peer_ids:
+            if peer_id == self.id:
+                continue
+
+            rng = np.random.default_rng(self.seed + feature)  # deterministic for reproducibility
+            r_kernel = rng.normal()
+            r_noise = rng.normal()
+
+            # Enforce consistent masking direction
+            if self.id < peer_id:
+                # We subtract this mask (sending)
+                total_mask_kernel += r_kernel
+                total_mask_noise += r_noise
+                shared_masks_kernel[peer_id] = r_kernel
+                shared_masks_noise[peer_id] = r_noise
+            else:
+                # We add this mask (receiving)
+                total_mask_kernel -= r_kernel
+                total_mask_noise -= r_noise
+                shared_masks_kernel[peer_id] = -r_kernel
+                shared_masks_noise[peer_id] = -r_noise
+
+        # Final masked hyperparameters
+        self.local_kernel = kernel_sig - total_mask_kernel
+        self.local_noise = noise_sig - total_mask_noise
+
+        return shared_masks_kernel, shared_masks_noise
+
+    def get_masked_hyperparameters(self):
+        return self.local_kernel, self.local_noise
 
     def compute_hyperparameters(self, feature):
         """
@@ -256,7 +307,7 @@ class TargetClient:
         """
         is_feature = np.in1d(np.arange(self.no_features), feature)
 
-        target_label = self.X[:, is_feature]
+        target_label = self.X[:, is_feature].ravel()
 
         res_normed = (target_label - mean) / var
         confs = (1 - abs(norm.cdf(res_normed) - norm.cdf(-res_normed)))
