@@ -154,6 +154,37 @@ class SourceClient:
 
         return np.dot(mean_piece, data_train_y).flatten()
 
+    def compute_masked_weights(self, weights):
+        """
+        Applies zero-sum masking to WEN model weights.
+        :param weights: List of numpy arrays (model weights)
+        :return: masked weights (with this client's mask applied)
+        """
+
+        masked_weights = []
+
+        for i, weight in enumerate(weights):
+            total_mask = np.zeros_like(weight)
+
+            for peer_id in range(self.total_clients):
+                if peer_id == self.id:
+                    continue
+
+                # Use deterministic seed per layer for reproducibility
+                rng = np.random.default_rng(self.seed + i)
+
+                mask = rng.normal(size=weight.shape)
+
+                if self.id < peer_id:
+                    total_mask += mask
+                else:
+                    total_mask -= mask
+
+            masked_weight = weight - total_mask
+            masked_weights.append(masked_weight)
+
+        return masked_weights
+
     def train_WEN_locally(self, global_model_weights, feature_weights, alpha, lam, current_lr, epochs):
         """
         Performs local training of the Weighted Elastic Net model for the federated learning system. Takes as input
@@ -184,7 +215,11 @@ class SourceClient:
                                  shuffle=False
                                  )
 
-        return self.local_WEN_model.get_weights()
+        updated_weights = self.local_WEN_model.get_weights()
+
+        masked_weights = self.compute_masked_weights(updated_weights)
+
+        return masked_weights
 
 
 class TargetClient:
